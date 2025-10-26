@@ -162,9 +162,16 @@
         // Configuration
         const RAILWAY_WS_URL = 'wss://claymation-transcription-production.up.railway.app/ws';
         const LIVEKIT_URL = 'wss://claymation-transcription-l6e51sws.livekit.cloud';
-        
-        // TODO: Replace with actual viewer token from LiveKit dashboard
-        // Generate at: https://claymation-transcription-l6e51sws.livekit.cloud
+
+        // ⚠️ IMPORTANT: Replace with actual LiveKit viewer token to enable video streaming
+        // How to get your token:
+        // 1. Visit: https://cloud.livekit.io/
+        // 2. Navigate to your project: claymation-transcription-l6e51sws
+        // 3. Go to Settings > Tokens
+        // 4. Generate a new token with viewer permissions
+        // 5. Copy and paste it here to replace the placeholder below
+        //
+        // Note: Audio transcription will work without this, but video won't display
         const VIEWER_TOKEN = 'YOUR_LIVEKIT_VIEWER_TOKEN_HERE';
         
         async function startExperience() {
@@ -207,7 +214,7 @@
                 };
                 
                 // Connect to LiveKit for video stream
-                // connectToLiveKit();
+                connectToLiveKit();
                 
                 // Update UI
                 document.getElementById('startBtn').disabled = true;
@@ -251,51 +258,89 @@
         }
         
         async function connectToLiveKit() {
-            // Uncomment when you have the viewer token
-            /*
+            // Check if viewer token is set
+            if (VIEWER_TOKEN === 'YOUR_LIVEKIT_VIEWER_TOKEN_HERE') {
+                console.warn('⚠️ LiveKit viewer token not set!');
+                console.warn('To enable video streaming:');
+                console.warn('1. Go to: https://cloud.livekit.io/');
+                console.warn('2. Generate a viewer token for your project');
+                console.warn('3. Replace VIEWER_TOKEN in index.html');
+                updateStatus('Audio transcription active. Video requires LiveKit token setup (see console).');
+                return;
+            }
+
             try {
+                updateStatus('Connecting to video stream...');
+
                 room = new LivekitClient.Room({
                     adaptiveStream: true,
                     dynacast: true
                 });
-                
+
                 room.on('trackSubscribed', (track, publication, participant) => {
                     if (track.kind === 'video') {
-                        track.attach(document.getElementById('remoteVideo'));
+                        const videoElement = document.getElementById('remoteVideo');
+                        track.attach(videoElement);
                         document.getElementById('loading').style.display = 'none';
-                        updateStatus('Connected! Viewing claymation stream.');
+                        updateStatus('✓ Connected! Viewing live claymation stream.');
+                        console.log('✓ Video track attached successfully');
                     }
                 });
-                
+
+                room.on('disconnected', () => {
+                    console.log('LiveKit room disconnected');
+                    document.getElementById('loading').style.display = 'block';
+                });
+
+                room.on('connectionQualityChanged', (quality, participant) => {
+                    console.log('Connection quality:', quality);
+                });
+
                 await room.connect(LIVEKIT_URL, VIEWER_TOKEN);
-                
+                console.log('✓ Connected to LiveKit room');
+
             } catch (error) {
                 console.error('LiveKit connection error:', error);
-                updateStatus('Video connection unavailable.');
+                console.error('Error details:', error.message);
+                updateStatus('Audio transcription active. Video connection error (see console).');
+
+                // Show helpful error message
+                if (error.message.includes('token')) {
+                    console.error('Token error - please verify your LiveKit viewer token is valid');
+                } else if (error.message.includes('network') || error.message.includes('connection')) {
+                    console.error('Network error - check your internet connection and LiveKit URL');
+                }
             }
-            */
         }
         
         function stopExperience() {
             // Stop recording
             if (recordInterval) {
                 clearInterval(recordInterval);
+                recordInterval = null;
             }
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 mediaRecorder.stop();
                 mediaRecorder.stream.getTracks().forEach(track => track.stop());
             }
-            
+            mediaRecorder = null;
+
             // Close WebSocket
             if (ws) {
                 ws.close();
+                ws = null;
             }
-            
-            // Disconnect from LiveKit
+
+            // Disconnect from LiveKit and cleanup video
             if (room) {
                 room.disconnect();
+                room = null;
             }
-            
+
+            // Clear video element
+            const videoElement = document.getElementById('remoteVideo');
+            videoElement.srcObject = null;
+
             // Update UI
             document.getElementById('startBtn').disabled = false;
             document.getElementById('stopBtn').disabled = true;
